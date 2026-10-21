@@ -1,0 +1,16 @@
+[Unit]
+Description=BOOSTBALL multiplayer car football
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/repos/boostball
+Environment=HOST=::
+Environment=PORT=8080
+ExecStart=/usr/bin/env node server.cjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
