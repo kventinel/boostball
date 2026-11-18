@@ -15,3 +15,5 @@ for(let i=1;i<=600;i++){
 assert(maxJump<1,'prediction should not snap on authoritative updates');
 const teleported={...start,x:30,z:10};predictor.accept(teleported,11000,50,true);assert.equal(predictor.view().x,30);assert.equal(predictor.error.x,0);
 console.log('Netcode: monotonic render clock under jitter, bounded extrapolation, stale packets, immediate input, continuous corrections and teleport reset OK.');
+
+const corrupt=new CarPrediction(P.drive);corrupt.reset(start);corrupt.car.vx=NaN;corrupt.error.x=NaN;corrupt.accept(start,100,50,false);assert(Number.isFinite(corrupt.view().vx));assert(Number.isFinite(corrupt.view().x));

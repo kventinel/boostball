@@ -65,7 +65,7 @@ function predictDrive(car,dt,keys,cars=[],ball=null) {
     drive(car,dt,keys);
     // Predict only our car; authoritative snapshots still own all other bodies and statistics.
     const others=cars.filter(c=>c.id!==car.id&&(c.x-car.x)**2+(c.z-car.z)**2<22).map(c=>({...c}));
-    const localBall=ball?{...ball}:null;
+    const localBall=ball&&['x','y','z'].every(k=>Number.isFinite(ball[k]))?{...ball,vx:Number.isFinite(ball.vx)?ball.vx:0,vy:Number.isFinite(ball.vy)?ball.vy:0,vz:Number.isFinite(ball.vz)?ball.vz:0}:null;
     for(let i=0;i<3;i++){for(const other of others)C.resolveCars(car,other);if(localBall)C.resolveCarBall(car,localBall);C.carBounds(car);}
 }
 function scoreGoal(s, team) {

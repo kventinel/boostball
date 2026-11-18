@@ -104,45 +104,52 @@ class ArenaRenderer {
         if(!this.gl)throw new Error('Для игры нужен WebGL. Включите аппаратное ускорение в настройках браузера.');
         this.init();
         canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();this.lost=true;});
-        canvas.addEventListener('webglcontextrestored',()=>{this.init();this.lost=false;});
+        canvas.addEventListener('webglcontextrestored',()=>{this.buffers=[];this.program=null;this.recover();});
+    }
+    recover() {
+        if(this.gl.isContextLost?.())return false;
+        try{for(const buffer of this.buffers||[])this.gl.deleteBuffer(buffer);if(this.program)this.gl.deleteProgram(this.program);this.init();this.lost=false;this.lastError='';return true;}catch(error){this.lost=true;this.lastError=error.message;return false;}
     }
     init() {
-        const gl=this.gl;
+        const gl=this.gl;this.buffers=[];
+        const createBuffer=()=>{const buffer=gl.createBuffer();if(!buffer)throw Error('Не удалось создать графический буфер');this.buffers.push(buffer);return buffer;};
         const compile=(type,source)=>{const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(shader));return shader;};
         const vs=compile(gl.VERTEX_SHADER,`attribute vec3 aPosition;attribute vec3 aColor;attribute float aMaterial;attribute vec4 aInstance;uniform mat4 uVP;uniform vec3 uCamera;varying vec3 vColor;varying vec3 vWorld;varying float vMaterial;varying float vDistance;void main(){float co=cos(aInstance.w),si=sin(aInstance.w);vec3 world=vec3(aPosition.x*co-aPosition.z*si,aPosition.y,aPosition.x*si+aPosition.z*co)+aInstance.xyz;gl_Position=uVP*vec4(world,1.0);vColor=aColor;vWorld=world;vMaterial=aMaterial;vDistance=distance(world,uCamera);}`);
         const fs=compile(gl.FRAGMENT_SHADER,`precision mediump float;varying vec3 vColor;varying vec3 vWorld;varying float vMaterial;varying float vDistance;void main(){vec3 color=vColor;if(vMaterial>0.5){float stripe=mix(0.86,1.02,smoothstep(-0.12,0.12,sin(vWorld.x*0.7)));float grain=0.99+0.01*sin(vWorld.z*5.0+sin(vWorld.x*3.0));float light=1.0-0.12*min(1.0,dot(vWorld.xz,vWorld.xz)/2600.0);color*=stripe*grain*light;float glow=exp(-abs(abs(vWorld.x)-41.0)*0.65)*0.15;color+=mix(vec3(0.1,0.45,0.8),vec3(0.8,0.3,0.08),step(0.0,vWorld.x))*glow;}if(vMaterial>2.5)color*=1.3;float fog=smoothstep(75.0,190.0,vDistance)*0.5;gl_FragColor=vec4(mix(color,vec3(0.035,0.045,0.095),fog),1.0);}`);
         this.program=gl.createProgram();gl.attachShader(this.program,vs);gl.attachShader(this.program,fs);gl.linkProgram(this.program);if(!gl.getProgramParameter(this.program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(this.program));gl.deleteShader(vs);gl.deleteShader(fs);
         gl.useProgram(this.program);this.position=gl.getAttribLocation(this.program,'aPosition');this.color=gl.getAttribLocation(this.program,'aColor');this.material=gl.getAttribLocation(this.program,'aMaterial');this.instance=gl.getAttribLocation(this.program,'aInstance');this.instancing=gl.getExtension('ANGLE_instanced_arrays');this.vp=gl.getUniformLocation(this.program,'uVP');this.eye=gl.getUniformLocation(this.program,'uCamera');
         gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.clearColor(.035,.045,.095,1);
-        const mesh=arena();this.staticBuffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,this.staticBuffer);gl.bufferData(gl.ARRAY_BUFFER,mesh.data.subarray(0,mesh.length),gl.STATIC_DRAW);this.staticCount=mesh.length/7;
-        const upload=mesh=>{const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,mesh.data.subarray(0,mesh.length),gl.STATIC_DRAW);return{buffer,count:mesh.length/7};};
+        const mesh=arena();this.staticBuffer=createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,this.staticBuffer);gl.bufferData(gl.ARRAY_BUFFER,mesh.data.subarray(0,mesh.length),gl.STATIC_DRAW);this.staticCount=mesh.length/7;
+        const upload=mesh=>{const buffer=createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,mesh.data.subarray(0,mesh.length),gl.STATIC_DRAW);return{buffer,count:mesh.length/7};};
         this.cars=[upload(carMesh(0)),upload(carMesh(1))];this.ball=upload(ballMesh());
         const shadow=new Mesh(1000);shadow.paint(0x12372e).disc(0,.06,0,2.3,1.65);this.shadow=upload(shadow);
         const ballShadow=new Mesh(1000);ballShadow.paint(0x12372e).disc(0,.07,0,1.6,1.6);this.ballShadow=upload(ballShadow);
         const ring=new Mesh(1600);ring.paint(0xe2ff82).ring(0,.09,0,2.5,.09,32);this.selection=upload(ring);
         const flame=new Mesh(1000);flame.paint(0xdfff7a).box(-2.5,.55,0,.7,.4,.7);flame.paint(0x81e7cd).box(-3.2,.62,0,.5,.25,.5);this.flame=upload(flame);
         this.transforms=[new Float32Array(96),new Float32Array(96)];this.shadows=new Float32Array(96);this.flames=new Float32Array(96);this.single=new Float32Array(4);
-        this.instanceBuffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,this.instanceBuffer);gl.bufferData(gl.ARRAY_BUFFER,96*4,gl.DYNAMIC_DRAW);
+        this.instanceBuffer=createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,this.instanceBuffer);gl.bufferData(gl.ARRAY_BUFFER,96*4,gl.DYNAMIC_DRAW);
     }
     setQuality(value) {this.quality=value;this.scale=value==='low'?.7:value==='high'?Math.min(devicePixelRatio||1,1.5):Math.min(devicePixelRatio||1,1);}
     reset(c) {this.fpsStart=0;this.frames=0;this.fps=60;this.camera=[c.x-Math.cos(c.a)*17,10.5,c.z-Math.sin(c.a)*17];this.target=[c.x+Math.cos(c.a)*7,1,c.z+Math.sin(c.a)*7];}
-    project(x,y,z) {const m=this.matrix,w=m[3]*x+m[7]*y+m[11]*z+m[15];if(w<.5)return null;const sx=(m[0]*x+m[4]*y+m[8]*z+m[12])/w,sy=(m[1]*x+m[5]*y+m[9]*z+m[13])/w;return {x:(sx+1)*this.width/2,y:(1-sy)*this.height/2,visible:Math.abs(sx)<1.1&&Math.abs(sy)<1.1};}
+    project(x,y,z) {const m=this.matrix;if(!m)return null;const w=m[3]*x+m[7]*y+m[11]*z+m[15];if(w<.5)return null;const sx=(m[0]*x+m[4]*y+m[8]*z+m[12])/w,sy=(m[1]*x+m[5]*y+m[9]*z+m[13])/w;return {x:(sx+1)*this.width/2,y:(1-sy)*this.height/2,visible:Math.abs(sx)<1.1&&Math.abs(sy)<1.1};}
     draw(state,playing,localId,follow,now,dt) {
-        if(this.lost)return;
+        if(this.lost||this.gl.isContextLost?.())return;
         const start=performance.now(),gl=this.gl,w=innerWidth,h=innerHeight;
         this.width=w;this.height=h;
         if(!this.fpsStart)this.fpsStart=now;this.frames++;
         if(now-this.fpsStart>=1000){this.fps=this.frames*1000/(now-this.fpsStart);this.frames=0;this.fpsStart=now;if(playing&&this.quality==='auto'&&now-this.adjustAt>4000){if(this.fps<45&&this.scale>.6)this.scale=Math.max(.6,this.scale-.1);else if(this.fps>57&&this.scale<1)this.scale=Math.min(1,this.scale+.05);this.adjustAt=now;}}
         const cw=Math.round(w*this.scale),ch=Math.round(h*this.scale);
         if(this.canvas.width!==cw||this.canvas.height!==ch){this.canvas.width=cw;this.canvas.height=ch;gl.viewport(0,0,cw,ch);}
-        const c=state.cars[localId]||state.cars[0];
+        const c=state.cars[localId]||state.cars[0];if(!c||!['x','y','z','a'].every(k=>Number.isFinite(c[k]))||!state.ball||!['x','y','z'].every(k=>Number.isFinite(state.ball[k])))return;
+        if(![...this.camera,...this.target].every(Number.isFinite))this.reset(c);
         const desired=playing?(follow?[c.x-Math.cos(c.a)*17,10.5,c.z-Math.sin(c.a)*17]:[-31,62,66]):[64+Math.sin(now*.00004)*6,64,72];
         const aim=playing&&follow?[c.x+Math.cos(c.a)*7,1.5,c.z+Math.sin(c.a)*7]:[playing?0:-14,0,0];
         const ca=1-Math.exp(-5*dt),ta=1-Math.exp(-8*dt);
         for(let i=0;i<3;i++){this.camera[i]+=(desired[i]-this.camera[i])*ca;this.target[i]+=(aim[i]-this.target[i])*ta;}
         const z=unit(this.camera.map((v,i)=>v-this.target[i])),x=unit(cross([0,1,0],z)),y=cross(z,x),view=new Float32Array([x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-dot(x,this.camera),-dot(y,this.camera),-dot(z,this.camera),1]);
         const f=1/Math.tan(58*Math.PI/360),near=.25,far=260,projection=new Float32Array([f/(w/h),0,0,0,0,f,0,0,0,0,(far+near)/(near-far),-1,0,0,2*far*near/(near-far),0]);
-        this.matrix=multiply(projection,view);
+        this.matrix=multiply(projection,view);if(!Array.from(this.matrix).every(Number.isFinite)){this.reset(c);return;}
+        gl.viewport(0,0,cw,ch);
         gl.useProgram(this.program);gl.uniformMatrix4fv(this.vp,false,this.matrix);gl.uniform3fv(this.eye,this.camera);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
         this.uploadBytes=0;this.drawCalls=0;
         gl.disableVertexAttribArray(this.instance);gl.vertexAttrib4f(this.instance,0,0,0,0);

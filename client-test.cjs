@@ -19,5 +19,6 @@ function frame(){now+=17;frames.shift()(now);}
     for(let i=0;i<10;i++)frame();assert.equal(element('overlay').hidden,false);assert.equal(element('results').hidden,false);assert.equal(element('finalScore').textContent,'2 : 1');assert.equal(element('statsBody').children.length,24);
     assert.equal(element('statsBody').children[0].children[0].textContent,'<Alex & team>');
     await element('restart').onclick();assert.equal(element('results').hidden,true);assert.equal(env.window.Boostball.state.cars[0].name,'<Alex & team>');assert.equal(env.window.Boostball.state.cars[0].stats.goals,0);
+    env.window.Boostball.state.time=123;await element('exit').onclick();assert.equal(element('resumeGame').hidden,false);await element('resumeGame').onclick();assert.equal(env.window.Boostball.state.time,123);assert.equal(env.window.Boostball.playing,true);
     console.log('Client: nickname persistence, 12×12, safe text rendering, automatic results, 24 player rows and restart reset OK.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

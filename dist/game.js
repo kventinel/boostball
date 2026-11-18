@@ -1,12 +1,18 @@
 'use strict';
-const $ = id => document.getElementById(id), P = Physics, VERSION = '2.4.0';
-let renderer;
+const $ = id => document.getElementById(id), P = Physics, VERSION = '2.5.0';
+let renderer,graphicsFault=false,lastGraphicsRetry=0;
+function showGraphicsNotice(message){$('graphicsNotice').hidden=false;$('graphicsMessage').textContent=message;}
+$('retryGraphics').onclick=()=>{if(renderer?.recover?.()){graphicsFault=false;$('graphicsNotice').hidden=true;renderer.reset(state.cars[localId]);}};
 try { renderer = new ArenaRenderer($('game')); } catch (e) { $('error').textContent = e.message; $('play').disabled = true; }
 let state = P.create(4,600), view = state, playing = false, paused = false, mode = 'solo', localId = 0, keys = {}, session = null, events = null, follow = true, muted = true, audio = null;
 let last = performance.now(), accum = 0, announceUntil = 0, lastGoalTick = -1, lastHud = 0, lastLabels = 0, lastNet = 0, lastInput = '', netBusy = false, inputSeq = 0, ping = 0, lastReceived = 0;
 let snapshots = [], predicted = null, viewCars = [], viewBall = {}, predictionAccum = 0, lastRender = 0;
 const labels = new Map(), timeline = new Netcode.SnapshotBuffer(), predictor = new Netcode.CarPrediction((car,dt,keys)=>P.predictDrive(car,dt,keys,view.cars,view.ball));
 let lastSceneRender = 0;
+let resumeCandidate=null,resumeBusy=false,leaveRequest=null;
+function updateResumeButton(){const b=$('resumeGame');b.hidden=!resumeCandidate;b.disabled=resumeBusy;b.textContent=resumeBusy?'ПОДКЛЮЧАЕМСЯ…':resumeCandidate?.kind==='solo'?'ПРОДОЛЖИТЬ БЫСТРУЮ ИГРУ':`ВЕРНУТЬСЯ В ИГРУ · ${resumeCandidate?.room||''}`;}
+function saveResume(value){resumeCandidate={...value};try{sessionStorage.setItem('boostball.resume',JSON.stringify(resumeCandidate));}catch{}updateResumeButton();}
+try{const saved=JSON.parse(sessionStorage.getItem('boostball.resume')||'null');if((saved?.room&&saved?.token)||(saved?.kind==='solo'&&saved?.state?.cars?.length))resumeCandidate=saved;}catch{}updateResumeButton();
 $('buildVersion').textContent = 'v' + VERSION;
 const waiting = () => !!session && state.phase === 'lobby';
 let lobbySignature = '', lobbyBusy = false;
@@ -15,7 +21,7 @@ function syncWaitingRoom() {
     $('waitingRoom').hidden = !waiting();
     document.body.classList.toggle('waiting', waiting());
     if (!waiting()) {
-        if (session && state.phase === 'playing' && !playing) { enter(); return; }
+        if (session && ['playing','ended'].includes(state.phase) && !playing) { enter(); return; }
         if (playing) $('hud').hidden = false;
         if (wasWaiting && playing) { keys = {}; renderer?.reset(state.cars[localId]); }
         $('restart').disabled = !!session && state.lobby?.hostId !== localId; $('restart').textContent = !session ? 'НОВЫЙ МАТЧ' : state.lobby?.hostId === localId ? 'В КОМНАТУ ОЖИДАНИЯ' : 'ЖДЁМ СОЗДАТЕЛЯ';
@@ -58,6 +64,7 @@ function receive(next) {
         next = {...state, ...next, cars: next.cars.map(c => ({...state.cars[c.id], ...c}))};
     }
     if (session && !['lobby','playing','ended'].includes(next.phase)) throw Error('Обновите страницу: версия сервера изменилась.');
+    if(!next.ball||!['x','y','z','vx','vy','vz'].every(k=>Number.isFinite(next.ball[k]))||!Array.isArray(next.cars)||next.cars.some(c=>!['x','y','z','a','vx','vy','vz','boost'].every(k=>Number.isFinite(c[k])))){console.warn('Discarded invalid world snapshot');return;}
     const changed = state.matchId !== next.matchId || next.tick < state.tick, starting = state.phase === 'lobby' && next.phase === 'playing';
     const teleport = changed || starting || next.freeze > 0 || next.ended || next.phase === 'lobby';
     const mySeat = session?.playerId && next.lobby?.players.find(p => p.playerId === session.playerId);
@@ -79,6 +86,7 @@ function sampleNetwork(now) {
         if(extrapolate&&!stale&&state.freeze<=0){c.x+=right.vx*extrapolate;c.z+=right.vz*extrapolate;}
         if(i===localId&&predicted&&!state.ended&&state.freeze<=0)Object.assign(c,predictor.view(),{name:right.name,human:true});
     }
+    Object.assign(viewBall,b.ball);
     for(const key of ['x','y','z'])viewBall[key]=a.ball[key]+(b.ball[key]-a.ball[key])*t;
     if(extrapolate&&!stale&&state.freeze<=0){viewBall.x+=b.ball.vx*extrapolate;viewBall.z+=b.ball.vz*extrapolate;}
     return {...state,cars:viewCars,ball:viewBall};
@@ -105,18 +113,25 @@ function updateLabels() {
     for(const [id,el]of labels)if(!visible.has(id))el.hidden=true;
 }
 function frame(now) {
-    const elapsed=now-last;if(elapsed<5){requestAnimationFrame(frame);return;}const dt=Math.min(elapsed/1000,.1);last=now;
-    if(!session&&!paused){accum+=dt;let steps=0;while(accum>=1/60&&steps++<6){P.step(state,1/60,playing?{[localId]:input()}:{});accum-=1/60;}if(!playing&&state.ended)state=P.create(4,600);}
+    requestAnimationFrame(frame);
+    try {
+    if(graphicsFault&&now-lastGraphicsRetry>1500){lastGraphicsRetry=now;if(renderer?.recover?.()){graphicsFault=false;const c=state.cars[localId];if(c){predictor.reset(c);predicted=predictor.car;renderer.reset(c);}}}
+    const elapsed=now-last;if(elapsed<5)return;const dt=Math.min(elapsed/1000,.1);last=now;
+    if(!session&&!paused&&!renderer?.lost){accum+=dt;let steps=0;while(accum>=1/60&&steps++<6){P.step(state,1/60,playing?{[localId]:input()}:{});accum-=1/60;}if(!playing&&state.ended)state=P.create(4,600);}
     if(session&&!waiting()&&predicted&&state.freeze<=0&&!state.ended){predictionAccum+=dt;let steps=0;while(predictionAccum>=1/60&&steps++<6){if(now-lastReceived<1000)predictor.step(1/60,paused?{}:input(),now);predictionAccum-=1/60;}}
     view=session?sampleNetwork(now):state;
     if(playing||session){
         if(now-lastHud>=100){updateHUD(now);lastHud=now;}
-        if(session){const current=JSON.stringify(paused||waiting()?{}:input());if(!netBusy&&now-lastNet>=33&&(current!==lastInput||now-lastNet>500)){lastInput=current;lastNet=now;netBusy=true;const started=now;api('input',{...session,seq:++inputSeq,keys:JSON.parse(current)}).then(()=>{ping=ping*.7+(performance.now()-started)*.3;}).catch(()=>{lastInput='';}).finally(()=>netBusy=false);}}
+        if(session){const current=JSON.stringify(paused||waiting()||renderer?.lost||graphicsFault?{}:input());if(!netBusy&&now-lastNet>=33&&(current!==lastInput||now-lastNet>500)){lastInput=current;lastNet=now;netBusy=true;const started=now;api('input',{...session,seq:++inputSeq,keys:JSON.parse(current)}).then(()=>{ping=ping*.7+(performance.now()-started)*.3;}).catch(()=>{lastInput='';}).finally(()=>netBusy=false);}}
     }
     // The menu needs less rendering work than an active match.
     const interval=playing?($('quality').value==='high'?1000/120:1000/60):100;
     if(!document.hidden&&now-lastRender>=interval-1){renderer?.draw(view,playing,localId,follow,now,Math.min((now-lastSceneRender)/1000,.1)||dt);lastRender+=Math.max(1,Math.floor((now-lastRender)/interval))*interval;lastSceneRender=now;if(now-lastLabels>50){updateLabels();lastLabels=now;}}
-    requestAnimationFrame(frame);
+    if(renderer?.lost)showGraphicsNotice('Графика восстанавливается. Матч сохранён.');else if(!graphicsFault)$('graphicsNotice').hidden=true;
+    } catch(error) {
+        keys={};graphicsFault=true;showGraphicsNotice('Не удалось отрисовать кадр. Восстанавливаем изображение…');
+        if(now-lastGraphicsRetry>1500){lastGraphicsRetry=now;console.error('Frame recovery',error);if(renderer?.recover?.()){graphicsFault=false;const c=state.cars[localId];if(c){predictor.reset(c);predicted=predictor.car;renderer.reset(c);}}}
+    }
 }
 requestAnimationFrame(frame);
 async function api(action,data) {
@@ -135,14 +150,23 @@ $('play').onclick=async()=>{
         const n=+$('size').value,duration=+$('duration').value,team=+$('team').value;
         if(mode==='solo'){state=P.create(n,duration);state.matchId=1;localId=team*n;P.namePlayer(state,localId,name);}
         else {
-            const data=await api(mode==='host'?'create':'join',{n,duration,team,name,protocol:4,room:$('roomInput').value.trim()});if(data.state.phase!=='lobby')throw Error('Обновите страницу: сервер должен открыть комнату ожидания.');session={room:data.room,token:data.token,playerId:data.playerId};localId=data.id;playing=false;timeline.reset();receive(data.state);
-            events=new EventSource(`/api/events?room=${session.room}&token=${session.token}`);
-            events.onmessage=e=>{try{receive(JSON.parse(e.data));}catch(err){console.error('Snapshot error',err);}};
-            events.onerror=()=>{$('connection').textContent='ВОССТАНАВЛИВАЕМ СВЯЗЬ';if(waiting())$('lobbyError').textContent='Связь прервалась. Переподключаемся…';};
+            const data=await api(mode==='host'?'create':'join',{n,duration,team,name,protocol:5,room:$('roomInput').value.trim()});if(data.state.phase!=='lobby')throw Error('Обновите страницу: сервер должен открыть комнату ожидания.');connectSession(data);
         }
         if(!session)enter();
     }catch(e){$('error').textContent=e.message==='Failed to fetch'?'Сервер недоступен. Быстрая игра работает без подключения.':e.message;}
     finally{$('play').disabled=false;}
+};
+function connectSession(data){
+    session={room:data.room,token:data.token,playerId:data.playerId,epoch:data.epoch||1};localId=data.id;playing=false;timeline.reset();saveResume(session);receive(data.state);
+    events?.close();events=new EventSource(`/api/events?room=${session.room}&token=${session.token}&epoch=${session.epoch}`);
+    events.onmessage=e=>{try{receive(JSON.parse(e.data));}catch(error){console.error('Snapshot error',error);}};
+    events.onerror=()=>{$('connection').textContent='ВОССТАНАВЛИВАЕМ СВЯЗЬ';if(waiting())$('lobbyError').textContent='Связь прервалась. Переподключаемся…';};
+}
+$('resumeGame').onclick=async()=>{
+    if(!resumeCandidate||resumeBusy)return;resumeBusy=true;updateResumeButton();$('error').textContent='';
+    try{if(resumeCandidate.kind==='solo'){state=resumeCandidate.state;localId=resumeCandidate.localId;session=null;enter();}else{if(leaveRequest)await leaveRequest;connectSession(await api('resume',resumeCandidate));}}
+    catch(error){$('error').textContent=error.message;if(/закрыта|истекло/.test(error.message)){resumeCandidate=null;try{sessionStorage.removeItem('boostball.resume');}catch{}}}
+    finally{resumeBusy=false;updateResumeButton();}
 };
 function enter() {
     $('lobbyError').textContent='';
@@ -167,7 +191,7 @@ function showResults() {
     }
 }
 async function leave() {
-    if(session){const old=session;session=null;events?.close();events=null;api('leave',old).catch(()=>{});}snapshots=[];timeline.reset();predictor.car=null;predicted=null;playing=false;paused=false;keys={};state=P.create(4,600);view=state;
+    if(session){const old=session;saveResume(old);session=null;events?.close();events=null;leaveRequest=api('leave',old).catch(()=>{});}else if(playing)saveResume({kind:'solo',state,localId});snapshots=[];timeline.reset();predictor.car=null;predicted=null;playing=false;paused=false;keys={};state=P.create(4,600);view=state;
     for(const el of labels.values())el.hidden=true;
     document.body.classList.remove('playing');$('menu').hidden=false;$('arenaTag').hidden=false;$('hud').hidden=true;$('overlay').hidden=true;$('results').hidden=true;$('waitingRoom').hidden=true;document.body.classList.remove('waiting');lobbySignature='';lobbyBusy=false;$('connection').textContent='ЛОКАЛЬНАЯ АРЕНА';
 }
@@ -184,11 +208,27 @@ $('lobbyStart').onclick=()=>lobbyAction('start');
 $('lobbyJoinBlue').onclick=()=>lobbyAction('team', { team: 0 });
 $('lobbyJoinOrange').onclick=()=>lobbyAction('team', { team: 1 });
 $('lobbyCopy').onclick=()=> $('copy').onclick();
-$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(session.room);$('copy').textContent='СКОПИРОВАНО';$('lobbyCopy').textContent='СКОПИРОВАНО';setTimeout(()=>{$('copy').textContent='КОПИРОВАТЬ';$('lobbyCopy').textContent='КОПИРОВАТЬ КОД';},1600);}catch{prompt('Код комнаты',session.room);}};
+async function copyRoomCode() {
+    if(!session)return;
+    const code=session.room;
+    let copied=false;
+    // Clipboard API is unavailable on the HTTP address of the arena.
+    if(navigator.clipboard?.writeText){try{await navigator.clipboard.writeText(code);copied=true;}catch{}}
+    if(!copied){
+        const active=document.activeElement,field=document.createElement('textarea');
+        field.value=code;field.readOnly=true;field.style.cssText='position:fixed;left:-9999px;top:0;';
+        document.body.append(field);field.focus();field.select();
+        try{copied=document.execCommand('copy');}catch{}finally{field.remove();active?.focus();}
+    }
+    if(!copied){prompt('Скопируй код комнаты',code);return;}
+    $('copy').textContent='СКОПИРОВАНО';$('lobbyCopy').textContent='СКОПИРОВАНО';
+    setTimeout(()=>{$('copy').textContent='КОПИРОВАТЬ';$('lobbyCopy').textContent='КОПИРОВАТЬ КОД';},1600);
+}
+$('copy').onclick=copyRoomCode;
 $('sound').onclick=()=>{muted=!muted;$('sound').textContent=muted?'ЗВУК ВЫКЛ.':'ЗВУК ВКЛ.';if(!muted)beep();};
 addEventListener('keydown',e=>{if(!playing||waiting()||['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;const k=e.key.toLowerCase();if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k))e.preventDefault();if(k==='escape'&&!e.repeat)togglePause();if(k==='c'&&!e.repeat)follow=!follow;keys[k]=true;});
 addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
 addEventListener('blur',()=>{keys={};if(playing&&!session&&!paused&&!state.ended)togglePause();});
-addEventListener('pagehide',()=>{if(session)navigator.sendBeacon('/api/leave',JSON.stringify(session));});
+addEventListener('pagehide',()=>{if(session){saveResume(session);navigator.sendBeacon('/api/leave',JSON.stringify(session));}else if(playing)saveResume({kind:'solo',state,localId});});
 document.querySelectorAll('[data-key]').forEach(b=>{b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);keys[b.dataset.key]=true;};b.onpointerup=b.onpointercancel=()=>keys[b.dataset.key]=false;});
 window.Boostball={get state(){return state;},get session(){return session;},get playing(){return playing;},get performance(){return{fps:renderer?.fps,drawMs:renderer?.gpuMs,uploadBytes:renderer?.uploadBytes,ping};},setSize};

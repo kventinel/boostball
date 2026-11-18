@@ -19,18 +19,21 @@ class SnapshotBuffer {
         return{a:a.state,b:b.state,alpha,extrapolate:Math.max(0,Math.min(.05,(this.renderTick-latest.state.tick)/60)),stale:now-latest.at>500};
     }
 }
+const finiteCar=c=>c&&['x','y','z','vx','vy','vz','a','boost'].every(k=>Number.isFinite(c[k]));
 class CarPrediction {
     constructor(drive){this.drive=drive;this.car=null;this.error={x:0,y:0,z:0,a:0};this.history=[];}
-    reset(car){this.car={...car};this.error={x:0,y:0,z:0,a:0};this.history=[];}
+    reset(car){if(!finiteCar(car))return;this.authoritative={...car};this.car={...car};this.error={x:0,y:0,z:0,a:0};this.history=[];}
     step(dt,keys,now){
-        if(!this.car)return;this.history.push({at:now,keys});while(this.history.length>120)this.history.shift();
-        this.drive(this.car,dt,keys);const decay=Math.exp(-18*dt);for(const k of ['x','y','z','a'])this.error[k]*=decay;
+        if(!finiteCar(this.car)){this.reset(this.authoritative);return;}this.history.push({at:now,keys});while(this.history.length>120)this.history.shift();
+        this.drive(this.car,dt,keys);if(!finiteCar(this.car)){this.reset(this.authoritative);return;}const decay=Math.exp(-18*dt);for(const k of ['x','y','z','a'])this.error[k]*=decay;
     }
     accept(car,now,ping,teleport){
-        if(!this.car||teleport||Math.hypot(this.car.x-car.x,this.car.z-car.z)>6){this.reset(car);return;}
+        if(!finiteCar(car))return;this.authoritative={...car};
+        if(!finiteCar(this.car)||!Object.values(this.error).every(Number.isFinite)||teleport||Math.hypot(this.car.x-car.x,this.car.z-car.z)>6){this.reset(car);return;}
         const old={x:this.car.x+this.error.x,y:this.car.y+this.error.y,z:this.car.z+this.error.z,a:this.car.a+this.error.a};
         const age=Math.min(.15,Math.max(0,ping/2000)+1/120),from=now-age*1000,next={...car};
         for(let t=0;t<age;t+=1/60){let keys={};for(let i=this.history.length-1;i>=0;i--)if(this.history[i].at<=from+t*1000){keys=this.history[i].keys;break;}this.drive(next,Math.min(1/60,age-t),keys);}
+        if(!finiteCar(next)){this.reset(car);return;}
         this.car=next;for(const k of ['x','y','z'])this.error[k]=old[k]-next[k];this.error.a=Math.atan2(Math.sin(old.a-next.a),Math.cos(old.a-next.a));
     }
     view(){return{...this.car,x:this.car.x+this.error.x,y:this.car.y+this.error.y,z:this.car.z+this.error.z,a:this.car.a+this.error.a};}

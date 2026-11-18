@@ -69,7 +69,7 @@ The end-of-match table contains nicknames, teams, goals, assists, shots, touches
 
 An assist goes to the previous teammate who touched the ball, within ten seconds before the goal and without an intervening opponent touch. A shot is a new touch that sends the horizontal ball trajectory toward the goal mouth. Units are based on the game's simulation scale.
 
-Rooms and results live in server memory and disappear on restart. Nicknames are display names, not authenticated accounts. This is a prototype; large-scale hosting, persistent accounts, saved matches and abuse controls are outside its current scope.
+Rooms and results live in server memory and disappear on restart. A **Вернуться в игру** (Return to game) button restores your last online seat for up to five minutes after leaving, retaining your nickname, team and personal statistics. A bot controls the vacant seat while you are away. The saved connection survives page refreshes in the same browser tab; it is private to that tab. If a lobby seat has been taken, it cannot be reclaimed from another player. Quick play can also be continued after returning to the menu or refreshing the tab. Nicknames are display names, not authenticated accounts. This is a prototype; large-scale hosting, persistent accounts, saved matches and abuse controls are outside its current scope.
 
 ## Tests
 
@@ -78,6 +78,10 @@ npm test
 ```
 
 Tests cover physics up to 12×12, scoring and assists, safe nickname display, lobby isolation, readiness, creator/guest permissions, host transfer, shared match start, final statistics, restart behavior, partial snapshots and prediction/interpolation under jitter, chassis corner contacts, fast balls, kinetic-energy bounds, resting roof contacts, posts/crossbar and dense 24-car collisions. The tests require no package installation.
+
+## Graphics recovery
+
+Interpolated ball snapshots retain their full velocity vector, so client-side contacts cannot introduce invalid car coordinates. Invalid prediction data is reset from the latest authoritative snapshot. Rendering errors cannot terminate the animation loop. WebGL resources are recreated after a restored graphics context; a recovery message and retry button are shown while graphics is unavailable. The simulation and graphics recovery are independent.
 
 ## Optional Linux user service
 

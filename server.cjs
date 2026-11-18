@@ -2,17 +2,25 @@
 const http = require('node:http'), fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 const { performance } = require('node:perf_hooks');
 const P = require('./dist/physics.js'), rooms = new Map(), root = path.join(__dirname, 'dist'), PORT = Number(process.env.PORT) || 8080;
-const VERSION = '2.4.0';
+const VERSION = '2.5.0';
 function json(res, status, data) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); }
 function updateLobby(r) { r.dirty = true; r.state.lobby = { hostId: r.players.values().next().value?.id ?? null, players: [...r.players.values()].map(p => ({ id: p.id, playerId: p.playerId, name: r.state.cars[p.id].name, team: r.state.cars[p.id].team, ready: p.ready })) }; }
-function removePlayer(r, token) { const p = r.players.get(token); if (!p) return; p.stream?.end(); r.players.delete(token); P.releasePlayer(r.state, p.id); delete r.inputs[p.id]; if (r.state.phase === 'lobby') r.state.participants = []; updateLobby(r); }
-function createState(n, duration, round = 1) { const s = P.create(n, duration); s.matchId = round; s.phase = 'lobby'; s.protocol = 4; s.version = VERSION; return s; }
+const RETURN_WINDOW=5*60*1000;
+function removePlayer(r,token){
+    const p=r.players.get(token);if(!p)return;
+    const car=r.state.cars[p.id],participantIndex=r.state.participants.length;
+    const saved={...p,name:car.name,team:car.team,stats:{...car.stats},matchId:r.state.matchId,leftAt:Date.now(),stream:null};
+    p.stream?.end();r.players.delete(token);P.releasePlayer(r.state,p.id);saved.participant=r.state.participants[participantIndex];
+    (r.returning||(r.returning=new Map())).set(token,saved);delete r.inputs[p.id];
+    if(r.state.phase==='lobby')r.state.participants=[];updateLobby(r);
+}
+function createState(n, duration, round = 1) { const s = P.create(n, duration); s.matchId = round; s.phase = 'lobby'; s.protocol = 5; s.version = VERSION; return s; }
 const server = http.createServer(async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
-    if (u.pathname === '/health') return json(res, 200, { ok: true, version: VERSION, protocol: 4, rooms: rooms.size });
+    if (u.pathname === '/health') return json(res, 200, { ok: true, version: VERSION, protocol: 5, rooms: rooms.size });
     if (u.pathname === '/api/events') {
         const r = rooms.get(u.searchParams.get('room')), player = r?.players.get(u.searchParams.get('token'));
-        if (!player) return json(res, 403, { error: 'Комната или игрок не найдены' });
+        if (!player || (u.searchParams.has('epoch') && Number(u.searchParams.get('epoch')) !== player.epoch)) return json(res, 403, { error: 'Комната или игрок не найдены' });
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
         res.write(': connected\n\n'); player.stream?.end(); player.stream = res; player.seen = Date.now();
         res.write('data: ' + JSON.stringify(r.state) + '\n\n');
@@ -24,7 +32,7 @@ const server = http.createServer(async (req, res) => {
             for await (const chunk of req) { body += chunk; if (body.length > 4096) { json(res, 413, { error: 'Слишком большой запрос' }); req.destroy(); return; } }
             const data = JSON.parse(body || '{}');
             if (u.pathname === '/api/create' || u.pathname === '/api/join') {
-                if (data.protocol !== 4) return json(res, 426, { error: 'Обновите страницу для загрузки новой версии комнаты ожидания.' });
+                if (data.protocol !== 5) return json(res, 426, { error: 'Обновите страницу для загрузки новой версии комнаты ожидания.' });
                 let code, r;
                 if (u.pathname === '/api/create') {
                     if (rooms.size >= 100) return json(res, 503, { error: 'Сервер заполнен' });
@@ -41,12 +49,33 @@ const server = http.createServer(async (req, res) => {
                 if (!car) return json(res, 409, { error: 'Комната заполнена' });
                 const token = crypto.randomBytes(20).toString('hex');
                 const playerId = crypto.randomBytes(8).toString('hex');
-                r.players.set(token, { id: car.id, playerId, seen: Date.now(), stream: null, ready: false });
+                r.players.set(token, { id: car.id, playerId, seen: Date.now(), stream: null, ready: false, epoch: 1 });
                 car.stats = P.emptyStats(); P.namePlayer(r.state, car.id, data.name); car.ack = 0; r.inputs[car.id] = {}; updateLobby(r);
-                return json(res, 200, { room: code, token, playerId, id: car.id, state: r.state });
+                return json(res, 200, { room: code, token, playerId, epoch: 1, id: car.id, state: r.state });
+            }
+            if(u.pathname==='/api/resume'){
+                const code=String(data.room||'').toUpperCase(),r=rooms.get(code);
+                if(!r)return json(res,404,{error:'Эта комната уже закрыта'});
+                let p=r.players.get(data.token);
+                if(!p){
+                    const saved=r.returning?.get(data.token);
+                    if(!saved||Date.now()-saved.leftAt>RETURN_WINDOW)return json(res,404,{error:'Время возвращения истекло. Создайте новую комнату.'});
+                    const occupied=new Set([...r.players.values()].map(q=>q.id));
+                    const seat=(!occupied.has(saved.id)&&r.state.cars[saved.id])||r.state.cars.find(c=>c.team===saved.team&&!occupied.has(c.id));
+                    if(!seat)return json(res,409,{error:'Места в вашей команде уже заняты'});
+                    const index=r.state.participants.indexOf(saved.participant);if(index>=0)r.state.participants.splice(index,1);
+                    if(r.state.phase!=='lobby'&&seat.stats.playTime>0)r.state.participants.push({...seat,stats:{...seat.stats},human:false});
+                    seat.stats=saved.matchId===r.state.matchId?{...saved.stats}:P.emptyStats();P.namePlayer(r.state,seat.id,saved.name);
+                    for(const key of ['lastTouch','previousTouch','lastShot'])if(r.state[key]?.id===seat.id)r.state[key]=null;
+                    p={id:seat.id,playerId:saved.playerId,stream:null,ready:false,seen:Date.now(),epoch:(saved.epoch||1)+1};
+                    r.players.set(data.token,p);r.returning.delete(data.token);r.inputs[p.id]={};
+                }else{p.stream?.end();p.stream=null;p.epoch=(p.epoch||1)+1;p.seen=Date.now();}
+                updateLobby(r);
+                return json(res,200,{room:code,token:data.token,playerId:p.playerId,epoch:p.epoch,id:p.id,state:r.state});
             }
             const r = rooms.get(String(data.room || '').toUpperCase()), p = r?.players.get(data.token);
             if (!p) return json(res, 403, { error: 'Игрок не найден' });
+            if(data.epoch!==undefined&&data.epoch!==p.epoch)return json(res,409,{error:'Это подключение уже заменено новым'});
             p.seen = Date.now();
             if (u.pathname === '/api/team') {
                 if (r.state.phase !== 'lobby') return json(res, 409, { error: 'Команду можно менять только в комнате ожидания' });
@@ -112,7 +141,8 @@ setInterval(() => {
     broadcastAt = now;
     for (const [code, r] of rooms) {
         for (const [token, p] of r.players) if (Date.now() - p.seen > 20000 && !p.stream) removePlayer(r, token);
-        if (!r.players.size) { if (Date.now()-r.seen>120000)rooms.delete(code); continue; }
+        for(const [token,saved]of r.returning||[])if(Date.now()-saved.leftAt>RETURN_WINDOW)r.returning.delete(token);
+        if (!r.players.size) { if (!r.returning?.size&&Date.now()-r.seen>120000)rooms.delete(code); continue; }
         r.seen=Date.now();
         const full=r.dirty || r.lastPhase!==r.state.phase || now-(r.fullAt||0)>=1000;
         if (r.state.phase!=='playing'&&!full)continue;
