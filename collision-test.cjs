@@ -15,6 +15,20 @@ for(const [z,y]of[[8.9,2],[0,7]]){s=scene();s.ball={x:40,y,z,vx:70,vy:0,vz:0};ru
 s=scene();s.ball={x:44,y:2,z:0,vx:0,vy:0,vz:0};run(s);assert.equal(s.score[0],0,'the whole ball must cross the goal plane');s.ball.x=45.1;run(s);assert.equal(s.score[0],1);
 s=scene(12);s.ball.z=23;for(const c of s.cars){c.x=(c.id%6-2.5)*.8;c.z=(Math.floor(c.id/6)-1.5)*.8;}run(s,180);let overlap=0;for(let i=0;i<s.cars.length;i++)for(let j=i+1;j<s.cars.length;j++)overlap=Math.max(overlap,C.carContact(s.cars[i],s.cars[j])?.depth||0);assert(overlap<.04,'a dense 24-car pile settles');assert(s.cars.every(c=>[c.x,c.y,c.z,c.vx,c.vy,c.vz].every(Number.isFinite)));
 const predicted={...P.create(1).cars[0],x:-1.7,z:0,a:0,vx:15},obstacle={...P.create(1).cars[1],x:1.7,z:0,a:Math.PI,vx:0};const unchanged=JSON.stringify(obstacle);P.predictDrive(predicted,1/60,{},[predicted,obstacle]);assert.equal(JSON.stringify(obstacle),unchanged);assert(predicted.vx<15);assert((C.carContact(predicted,obstacle)?.depth||0)<.5,'local prediction responds to contact before another snapshot');
+// Grounded hits must lift the ball at every supported simulation rate.
+for(const hz of [20,60,144]){
+    s=scene();Object.assign(s.cars[0],{x:-5,z:0,vx:20});s.ball={x:0,y:C.R,z:0,vx:0,vy:0,vz:0};
+    let peak=C.R,lifted=false,landed=false,rebounded=false;
+    for(let i=0;i<hz*3;i++){
+        P.step(s,1/hz);peak=Math.max(peak,s.ball.y);if(s.ball.vy>3)lifted=true;
+        if(lifted&&s.ball.vy< -1)landed=true;
+        if(landed&&s.ball.vy>1&&s.ball.y<C.R+.7)rebounded=true;
+    }
+    assert(peak>C.R+1,'driving into a grounded ball must send it airborne');
+    assert(rebounded,'the airborne ball must bounce after landing');
+}
+s=scene();s.ball={x:0,y:8,z:15,vx:0,vy:0,vz:0};let bounced=false;
+for(let i=0;i<120;i++){run(s);if(s.ball.vy>5)bounced=true;}assert(bounced,'a falling ball rebounds from the field');
 console.log('Collisions: chassis SAT, rotated corners, coincident centers, head-on impacts, walls, fast ball, energy bounds, resting roof contacts, stacking, goal frame and a 24-car pile OK.');
 
 const missingVelocity={...P.create(1).cars[0],x:0,z:0,vx:10,a:0};P.predictDrive(missingVelocity,1/60,{w:true},[missingVelocity],{x:3.3,y:1.45,z:0});assert(Number.isFinite(missingVelocity.vx),'missing optional ball velocity cannot corrupt the car');

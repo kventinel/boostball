@@ -2,7 +2,7 @@
 const http = require('node:http'), fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 const { performance } = require('node:perf_hooks');
 const P = require('./dist/physics.js'), rooms = new Map(), root = path.join(__dirname, 'dist'), PORT = Number(process.env.PORT) || 8080;
-const VERSION = '2.5.0';
+const VERSION = '2.5.1';
 function json(res, status, data) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); }
 function updateLobby(r) { r.dirty = true; r.state.lobby = { hostId: r.players.values().next().value?.id ?? null, players: [...r.players.values()].map(p => ({ id: p.id, playerId: p.playerId, name: r.state.cars[p.id].name, team: r.state.cars[p.id].team, ready: p.ready })) }; }
 const RETURN_WINDOW=5*60*1000;

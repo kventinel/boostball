@@ -1,5 +1,5 @@
 'use strict';
-const $ = id => document.getElementById(id), P = Physics, VERSION = '2.5.0';
+const $ = id => document.getElementById(id), P = Physics, VERSION = '2.5.1';
 let renderer,graphicsFault=false,lastGraphicsRetry=0;
 function showGraphicsNotice(message){$('graphicsNotice').hidden=false;$('graphicsMessage').textContent=message;}
 $('retryGraphics').onclick=()=>{if(renderer?.recover?.()){graphicsFault=false;$('graphicsNotice').hidden=true;renderer.reset(state.cars[localId]);}};

@@ -94,7 +94,7 @@ function recordTouch(s,c,hit) {
     if(toward>4&&flight>0&&flight<6&&Math.abs(b.z+b.vz*flight)<9){c.stats.shots++;s.lastShot={id:c.id,team:c.team,at:s.elapsed,pass:s.previousTouch?.team===c.team?{id:s.previousTouch.id,team:s.previousTouch.team,at:s.previousTouch.at}:null};}
 }
 function ballBounds(b){
-    if(b.y<C.R){b.y=C.R;b.vy=b.vy<-.8?-b.vy*.66:0;}
+    if(b.y<C.R){b.y=C.R;if(b.vy<0)b.vy=b.vy<-.8?-b.vy*.66:0;}
     if(b.y>17){b.y=17;if(b.vy>0)b.vy*= -.7;}
     const limit=28-C.R;
     if(Math.abs(b.z)>limit){b.z=Math.sign(b.z)*limit;if(b.vz*b.z>0)b.vz*= -.74;}

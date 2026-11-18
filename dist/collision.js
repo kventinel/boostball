@@ -45,6 +45,16 @@ function resolveCarBall(car,ball){
     const contact=sphereBox(ball,car.x,car.y+CAR.offsetY,car.z,CAR.x,CAR.y,CAR.z,car.a);
     if(!contact)return null;
     const before={vx:ball.vx,vz:ball.vz};const impact=impulse(car,ball,contact,CAR.inverseMass,1,.67,.08);
+    // Low chassis hits scoop the ball upward. Redirect speed rather than adding
+    // energy, and leave resting contacts and roof collisions to the normal solver.
+    if(impact>2&&contact.ny>=0&&contact.ny<.5&&ball.y<R+.65){
+        const horizontal=Math.hypot(ball.vx,ball.vz),speed=Math.hypot(horizontal,ball.vy);
+        const lift=Math.min(10,impact*.5,speed*.55);
+        if(lift>ball.vy&&horizontal>.001){
+            const scale=Math.sqrt(Math.max(0,speed*speed-lift*lift))/horizontal;
+            ball.vx*=scale;ball.vz*=scale;ball.vy=lift;
+        }
+    }
     return{...contact,impact,before};
 }
 function goalFrame(ball){
