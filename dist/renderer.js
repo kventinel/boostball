@@ -14,6 +14,15 @@ class Mesh {
         const e = [a[0],y+h,a[2]], f = [b[0],y+h,b[2]], g = [c[0],y+h,c[2]], j = [d[0],y+h,d[2]];
         this.quad(a,b,f,e,.65); this.quad(b,c,g,f,.78); this.quad(c,d,j,g,.72); this.quad(d,a,e,j,.58); this.quad(e,f,g,j,1);
     }
+    bevel(x,y,z,w,h,d,b=.16) {
+        const outline=(W,D,B,Y)=>[[-W/2+B,Y,-D/2],[W/2-B,Y,-D/2],[W/2,Y,-D/2+B],[W/2,Y,D/2-B],[W/2-B,Y,D/2],[-W/2+B,Y,D/2],[-W/2,Y,D/2-B],[-W/2,Y,-D/2+B]].map(p=>[p[0]+x,p[1],p[2]+z]);
+        const bottom=outline(w,d,b,y),shoulder=outline(w,d,b,y+h-b),top=outline(w-b*2,d-b*2,b*.6,y+h);
+        for(let i=0;i<8;i++){const j=(i+1)%8;this.quad(bottom[i],bottom[j],shoulder[j],shoulder[i],.59+.12*Math.cos(i*.78));this.quad(shoulder[i],shoulder[j],top[j],top[i],.88);this.tri([x,y+h,z],top[i],top[j]);}
+    }
+    wheel(x,y,z,r,width) {
+        const color=this.color,segments=16;
+        for(let i=0;i<segments;i++){const a=i/segments*TAU,b=(i+1)/segments*TAU,p=[x+Math.cos(a)*r,y+Math.sin(a)*r],q=[x+Math.cos(b)*r,y+Math.sin(b)*r];this.paint(0x101622).quad([p[0],p[1],z-width/2],[q[0],q[1],z-width/2],[q[0],q[1],z+width/2],[p[0],p[1],z+width/2],.75);for(const sign of[-1,1]){this.paint(0x192334).tri([x,y,z+sign*width/2],[p[0],p[1],z+sign*width/2],[q[0],q[1],z+sign*width/2]);this.paint(0xaec5d6).tri([x,y,z+sign*(width/2+.004)],[x+Math.cos(a)*r*.62,y+Math.sin(a)*r*.62,z+sign*(width/2+.004)],[x+Math.cos(b)*r*.62,y+Math.sin(b)*r*.62,z+sign*(width/2+.004)]);}}this.color=color;
+    }
     ring(x, y, z, radius, width, segments = 48) {
         for (let i = 0; i < segments; i++) { const a = i / segments * TAU, b = (i+1) / segments * TAU, r = radius-width/2, s = radius+width/2; this.quad([x+Math.cos(a)*r,y,z+Math.sin(a)*r],[x+Math.cos(a)*s,y,z+Math.sin(a)*s],[x+Math.cos(b)*s,y,z+Math.sin(b)*s],[x+Math.cos(b)*r,y,z+Math.sin(b)*r]); }
     }
@@ -23,8 +32,8 @@ class Mesh {
 function arena() {
     const m = new Mesh();
     m.paint(0x0a1b24).box(0,-1.2,0,114,1,82);
-    m.paint(0x215e45); m.material = 1; m.quad([-43,0,-27],[43,0,-27],[43,0,27],[-43,0,27]); m.material = 0;
-    m.paint(0xc6ddd1);
+    m.paint(0x1c634d); m.material = 1; m.quad([-43,0,-27],[43,0,-27],[43,0,27],[-43,0,27]); m.material = 0;
+    m.paint(0xc8eee4);
     const line = (x,z,w,d) => m.box(x,.025,z,w,.018,d);
     line(0,-26.7,85.4,.13); line(0,26.7,85.4,.13); line(-42.7,0,.13,53.4); line(42.7,0,.13,53.4); line(0,0,.14,53.4);
     m.ring(0,.05,0,9,.14); m.disc(0,.05,0,.32,.32);
@@ -33,7 +42,7 @@ function arena() {
         m.paint(sign<0?0x32b6ef:0xff9751);
         m.box(sign*43.5,0,-9,.38,7.1,.38);m.box(sign*43.5,0,9,.38,7.1,.38);m.box(sign*43.5,7,0,.38,.38,18.4);
         m.paint(sign<0?0x164c68:0x6c3a23).box(sign*46.5,-.1,0,6.4,.1,18);
-        m.paint(0x5e8682);
+        m.paint(0x7c9fae);
         for(let z=-9;z<=9;z+=1.5)m.box(sign*49.3,0,z,.055,7,.055);
         for(let y=1;y<=7;y+=1)m.box(sign*49.3,y,0,.055,.055,18);
         for(let z of [-9,9])for(let y=1;y<=7;y+=1)m.box(sign*46.4,y,z,6,.045,.045);
@@ -45,31 +54,44 @@ function arena() {
         m.paint(0x263f50).box(0,0,z,89,1.8,1);
         m.paint(0x46c9fa).box(-22,1.8,z-Math.sign(z)*.52,44,.13,.08);
         m.paint(0xffa465).box(22,1.8,z-Math.sign(z)*.52,44,.13,.08);
-        for(let i=0;i<4;i++)m.paint(i%2?0x182f42:0x233f50).box(0,-.1,z+Math.sign(z)*(3+i*2.7),103+i*2,2.8+i*1.7,2.8);
+        for(let i=0;i<4;i++)m.paint(i%2?0x121b34:0x1e2a45).box(0,-.1,z+Math.sign(z)*(3+i*2.7),103+i*2,2.8+i*1.7,2.8);
         for(let x=-46;x<=46;x+=3.3)m.paint(x<0?0x3f718b:0x94694a).box(x,4,z+Math.sign(z)*6,.9,.5,.8);
     }
     for(const x of [-48,48])for(const z of [-32,32]){m.paint(0x425765).box(x,0,z,.35,22,.35);m.paint(0xe5f8ef).box(x,21.5,z,3.6,.45,1.1);}
     for(const x of [-27,0,27])for(const z of [-18,18]){m.paint(0xb0cd54).ring(x,.035,z,1.15,.12);m.paint(0xe4f990).disc(x,.05,z,.3,.3);}
+    // Cached skyline, roof rails and light panels preserve the low per-frame upload cost.
+    for(const sign of[-1,1]){
+        m.material=3;m.paint(0x7188ff).box(0,12,sign*40,110,.12,.12);m.paint(0x39dce0).box(-26,2,sign*28.05,34,.11,.08);m.paint(0xffaa66).box(26,2,sign*28.05,34,.11,.08);m.material=0;
+        for(let i=0;i<17;i++){const x=-72+i*9,h=11+(i*7%19);m.paint(i%2?0x101a32:0x17213b).box(x,0,sign*54,7,h,6);m.material=3;for(let row=3;row<h-1;row+=3)for(let col=-1;col<=1;col++)if((i+row+col)%3)m.paint((i+col)%2?0x5e8dbe:0xb99577).box(x+col*1.6,row,sign*50.95,.65,.65,.03);m.material=0;}
+        for(let x=-42;x<=42;x+=7){m.material=3;m.paint(x<0?0x3dcdea:0xffa266).box(x,2.6,sign*28.1,3,.22,.08);m.material=0;}
+    }
     return m;
 }
 function carMesh(team) {
-    const m = new Mesh(14000);
-    m.paint(team?0xf39a4d:0x40b9e5).box(0,.35,0,3.8,.7,1.95);
-    m.paint(team?0xfbc282:0x90e0f5).box(-.25,1.05,0,1.8,.65,1.55);
-    m.paint(0x14313f).box(.61,1.14,0,.07,.46,1.38);
-    m.paint(0x204351).box(-1.13,1.15,0,.06,.36,1.35);
-    m.paint(0x12202b);for(const x of [-1.12,1.12])for(const z of [-1.02,1.02])m.box(x,.1,z,.88,.78,.4);
-    m.paint(0x9cadb1);for(const x of [-1.12,1.12])for(const z of [-1.24,1.24])m.box(x,.3,z,.35,.35,.045);
-    m.paint(0xf3ffd3);for(const z of [-.65,.65])m.box(1.91,.66,z,.045,.18,.43);
-    m.paint(0xff4a4a);for(const z of [-.65,.65])m.box(-1.91,.66,z,.045,.14,.35);
-    m.paint(0x101d29).box(-1.55,1.03,0,.26,.18,2.1);
-    m.paint(0xe2f3ea).box(-.15,1.715,0,1.5,.018,.15);
+    const m=new Mesh(50000),body=team?0xf17b35:0x2687e0,accent=team?0xffc282:0x64e1ff;
+    m.paint(0x0b1624).bevel(0,.2,0,4.04,.48,2.08,.18);
+    m.paint(body).bevel(0,.48,0,3.98,.56,2.08,.18);
+    m.paint(accent).bevel(.9,.98,0,1.5,.08,1.75,.06);
+    m.paint(0x142a42).quad([-.98,1.03,-.82],[.87,1.03,-.82],[.37,1.68,-.66],[-.7,1.68,-.66],.9);
+    m.quad([.87,1.03,.82],[-.98,1.03,.82],[-.7,1.68,.66],[.37,1.68,.66],.8);
+    m.paint(0x6fc6df).quad([.87,1.03,-.82],[.87,1.03,.82],[.37,1.68,.66],[.37,1.68,-.66],.8);
+    m.paint(0x284766).quad([-.98,1.03,.82],[-.98,1.03,-.82],[-.7,1.68,-.66],[-.7,1.68,.66]);
+    m.paint(body).bevel(-.17,1.66,0,1.18,.07,1.39,.04);
+    m.paint(accent).box(.12,1.735,0,.08,.015,1.12);
+    for(const x of[-1.19,1.18])for(const z of[-1.08,1.08])m.wheel(x,.45,z,.43,.32);
+    m.paint(0x0b1725).box(-1.68,1.11,0,.28,.13,2.18);for(const z of[-.7,.7])m.box(-1.68,.82,z,.12,.32,.12);
+    m.material=3;m.paint(0xe0fff2);for(const z of[-.66,.66])m.box(2.005,.78,z,.055,.12,.52);
+    m.paint(0xff5256);for(const z of[-.67,.67])m.box(-2.005,.68,z,.055,.1,.45);
+    m.paint(accent);for(const z of[-1.055,1.055])m.box(0,.55,z,2.3,.045,.025);m.material=0;
     return m;
 }
 function ballMesh() {
-    const m = new Mesh(18000), rows=10, cols=16, r=1.45;
-    const point=(row,col)=>{const a=row/rows*Math.PI,b=col/cols*TAU;return[r*Math.sin(a)*Math.cos(b),r*Math.cos(a),r*Math.sin(a)*Math.sin(b)];};
-    for(let row=0;row<rows;row++)for(let col=0;col<cols;col++) {m.paint((row+Math.floor(col/2))%3===0?0x233b4b:0xeff2dd);m.quad(point(row,col),point(row+1,col),point(row+1,col+1),point(row,col+1),.6+.4*Math.cos(row/rows*Math.PI/2));}
+    const m=new Mesh(50000),g=(1+Math.sqrt(5))/2,r=1.45;
+    const vertices=[[-1,g,0],[1,g,0],[-1,-g,0],[1,-g,0],[0,-1,g],[0,1,g],[0,-1,-g],[0,1,-g],[g,0,-1],[g,0,1],[-g,0,-1],[-g,0,1]].map(v=>{const l=Math.hypot(...v);return v.map(n=>n/l);});
+    const faces=[[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]];
+    const midpoint=(a,b)=>{const v=a.map((x,i)=>x+b[i]),l=Math.hypot(...v);return v.map(x=>x/l);};
+    function triangle(a,b,c,depth){if(depth){const ab=midpoint(a,b),bc=midpoint(b,c),ca=midpoint(c,a);triangle(a,ab,ca,depth-1);triangle(ab,b,bc,depth-1);triangle(ca,bc,c,depth-1);triangle(ab,bc,ca,depth-1);return;}let center=a.map((x,i)=>(x+b[i]+c[i])/3),l=Math.hypot(...center);center=center.map(x=>x/l);const dark=vertices.some(v=>v.reduce((sum,x,i)=>sum+x*center[i],0)>.94);m.paint(dark?0x173243:0xe1f0e8).tri(a.map(x=>x*r),b.map(x=>x*r),c.map(x=>x*r),.73+.25*Math.max(0,center[1]));}
+    for(const f of faces)triangle(...f.map(i=>vertices[i]),2);
     return m;
 }
 function multiply(a,b) {const o=new Float32Array(16);for(let col=0;col<4;col++)for(let row=0;row<4;row++)for(let k=0;k<4;k++)o[col*4+row]+=a[k*4+row]*b[col*4+k];return o;}
@@ -88,10 +110,10 @@ class ArenaRenderer {
         const gl=this.gl;
         const compile=(type,source)=>{const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(shader));return shader;};
         const vs=compile(gl.VERTEX_SHADER,`attribute vec3 aPosition;attribute vec3 aColor;attribute float aMaterial;attribute vec4 aInstance;uniform mat4 uVP;uniform vec3 uCamera;varying vec3 vColor;varying vec3 vWorld;varying float vMaterial;varying float vDistance;void main(){float co=cos(aInstance.w),si=sin(aInstance.w);vec3 world=vec3(aPosition.x*co-aPosition.z*si,aPosition.y,aPosition.x*si+aPosition.z*co)+aInstance.xyz;gl_Position=uVP*vec4(world,1.0);vColor=aColor;vWorld=world;vMaterial=aMaterial;vDistance=distance(world,uCamera);}`);
-        const fs=compile(gl.FRAGMENT_SHADER,`precision mediump float;varying vec3 vColor;varying vec3 vWorld;varying float vMaterial;varying float vDistance;void main(){vec3 color=vColor;if(vMaterial>0.5){float stripe=0.95+0.05*sin(vWorld.x*0.78);float grain=0.985+0.015*sin(vWorld.z*7.0+sin(vWorld.x*3.0));color*=stripe*grain;}float fog=smoothstep(65.0,175.0,vDistance)*0.65;gl_FragColor=vec4(mix(color,vec3(0.035,0.075,0.11),fog),1.0);}`);
+        const fs=compile(gl.FRAGMENT_SHADER,`precision mediump float;varying vec3 vColor;varying vec3 vWorld;varying float vMaterial;varying float vDistance;void main(){vec3 color=vColor;if(vMaterial>0.5){float stripe=mix(0.86,1.02,smoothstep(-0.12,0.12,sin(vWorld.x*0.7)));float grain=0.99+0.01*sin(vWorld.z*5.0+sin(vWorld.x*3.0));float light=1.0-0.12*min(1.0,dot(vWorld.xz,vWorld.xz)/2600.0);color*=stripe*grain*light;float glow=exp(-abs(abs(vWorld.x)-41.0)*0.65)*0.15;color+=mix(vec3(0.1,0.45,0.8),vec3(0.8,0.3,0.08),step(0.0,vWorld.x))*glow;}if(vMaterial>2.5)color*=1.3;float fog=smoothstep(75.0,190.0,vDistance)*0.5;gl_FragColor=vec4(mix(color,vec3(0.035,0.045,0.095),fog),1.0);}`);
         this.program=gl.createProgram();gl.attachShader(this.program,vs);gl.attachShader(this.program,fs);gl.linkProgram(this.program);if(!gl.getProgramParameter(this.program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(this.program));gl.deleteShader(vs);gl.deleteShader(fs);
         gl.useProgram(this.program);this.position=gl.getAttribLocation(this.program,'aPosition');this.color=gl.getAttribLocation(this.program,'aColor');this.material=gl.getAttribLocation(this.program,'aMaterial');this.instance=gl.getAttribLocation(this.program,'aInstance');this.instancing=gl.getExtension('ANGLE_instanced_arrays');this.vp=gl.getUniformLocation(this.program,'uVP');this.eye=gl.getUniformLocation(this.program,'uCamera');
-        gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.clearColor(.035,.075,.11,1);
+        gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.clearColor(.035,.045,.095,1);
         const mesh=arena();this.staticBuffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,this.staticBuffer);gl.bufferData(gl.ARRAY_BUFFER,mesh.data.subarray(0,mesh.length),gl.STATIC_DRAW);this.staticCount=mesh.length/7;
         const upload=mesh=>{const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,mesh.data.subarray(0,mesh.length),gl.STATIC_DRAW);return{buffer,count:mesh.length/7};};
         this.cars=[upload(carMesh(0)),upload(carMesh(1))];this.ball=upload(ballMesh());
@@ -103,7 +125,7 @@ class ArenaRenderer {
         this.instanceBuffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,this.instanceBuffer);gl.bufferData(gl.ARRAY_BUFFER,96*4,gl.DYNAMIC_DRAW);
     }
     setQuality(value) {this.quality=value;this.scale=value==='low'?.7:value==='high'?Math.min(devicePixelRatio||1,1.5):Math.min(devicePixelRatio||1,1);}
-    reset(c) {this.camera=[c.x-Math.cos(c.a)*18,12,c.z-Math.sin(c.a)*18];this.target=[c.x+Math.cos(c.a)*7,1,c.z+Math.sin(c.a)*7];}
+    reset(c) {this.fpsStart=0;this.frames=0;this.fps=60;this.camera=[c.x-Math.cos(c.a)*17,10.5,c.z-Math.sin(c.a)*17];this.target=[c.x+Math.cos(c.a)*7,1,c.z+Math.sin(c.a)*7];}
     project(x,y,z) {const m=this.matrix,w=m[3]*x+m[7]*y+m[11]*z+m[15];if(w<.5)return null;const sx=(m[0]*x+m[4]*y+m[8]*z+m[12])/w,sy=(m[1]*x+m[5]*y+m[9]*z+m[13])/w;return {x:(sx+1)*this.width/2,y:(1-sy)*this.height/2,visible:Math.abs(sx)<1.1&&Math.abs(sy)<1.1};}
     draw(state,playing,localId,follow,now,dt) {
         if(this.lost)return;
@@ -114,7 +136,7 @@ class ArenaRenderer {
         const cw=Math.round(w*this.scale),ch=Math.round(h*this.scale);
         if(this.canvas.width!==cw||this.canvas.height!==ch){this.canvas.width=cw;this.canvas.height=ch;gl.viewport(0,0,cw,ch);}
         const c=state.cars[localId]||state.cars[0];
-        const desired=playing?(follow?[c.x-Math.cos(c.a)*18,12,c.z-Math.sin(c.a)*18]:[-31,62,66]):[64+Math.sin(now*.00004)*6,64,72];
+        const desired=playing?(follow?[c.x-Math.cos(c.a)*17,10.5,c.z-Math.sin(c.a)*17]:[-31,62,66]):[64+Math.sin(now*.00004)*6,64,72];
         const aim=playing&&follow?[c.x+Math.cos(c.a)*7,1.5,c.z+Math.sin(c.a)*7]:[playing?0:-14,0,0];
         const ca=1-Math.exp(-5*dt),ta=1-Math.exp(-8*dt);
         for(let i=0;i<3;i++){this.camera[i]+=(desired[i]-this.camera[i])*ca;this.target[i]+=(aim[i]-this.target[i])*ta;}

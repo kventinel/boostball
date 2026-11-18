@@ -8,8 +8,8 @@ vm.runInNewContext(fs.readFileSync(__dirname+'/server.cjs','utf8'),{
 async function request(url,data){let status;const chunks=[];await handler({url,method:data?'POST':'GET',async *[Symbol.asyncIterator](){if(data)yield JSON.stringify(data);},on(){},destroy(){}},{writeHead(code){status=code;},write(text){chunks.push(text);},end(text){if(text)chunks.push(text);}});return{status,chunks,body:chunks.join('')};}
 const command=(action,player,data={})=>request('/api/'+action,{room:player.room,token:player.token,...data});
 async function state(player){const stream=await request(`/api/events?room=${player.room}&token=${player.token}`);return JSON.parse(stream.chunks.find(c=>c.startsWith('data: ')).slice(6));}
-async function create(data){return JSON.parse((await request('/api/create',{protocol:3,n:2,name:'Sam',...data})).body);}
-async function join(host,data){return JSON.parse((await request('/api/join',{protocol:3,room:host.room,name:'Sam',...data})).body);}
+async function create(data){return JSON.parse((await request('/api/create',{protocol:4,n:2,name:'Sam',...data})).body);}
+async function join(host,data){return JSON.parse((await request('/api/join',{protocol:4,room:host.room,name:'Sam',...data})).body);}
 (async()=>{
     const host=await create({team:0}),guest=await join(host,{team:0});
     assert.notEqual(host.playerId,guest.playerId);assert.equal(host.playerId.length,16);

@@ -1,10 +1,10 @@
 {
   "name": "boostball",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "private": true,
   "scripts": {
     "start": "node server.cjs",
-    "test": "node test.cjs && node stats-test.cjs && node integration-test.cjs && node client-test.cjs && node lobby-client-test.cjs && node netcode-test.cjs && node team-test.cjs"
+    "test": "node test.cjs && node stats-test.cjs && node integration-test.cjs && node client-test.cjs && node lobby-client-test.cjs && node netcode-test.cjs && node team-test.cjs && node collision-test.cjs"
   },
   "engines": {
     "node": ">=18"

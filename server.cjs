@@ -2,14 +2,14 @@
 const http = require('node:http'), fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 const { performance } = require('node:perf_hooks');
 const P = require('./dist/physics.js'), rooms = new Map(), root = path.join(__dirname, 'dist'), PORT = Number(process.env.PORT) || 8080;
-const VERSION = '2.3.0';
+const VERSION = '2.4.0';
 function json(res, status, data) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); }
 function updateLobby(r) { r.dirty = true; r.state.lobby = { hostId: r.players.values().next().value?.id ?? null, players: [...r.players.values()].map(p => ({ id: p.id, playerId: p.playerId, name: r.state.cars[p.id].name, team: r.state.cars[p.id].team, ready: p.ready })) }; }
 function removePlayer(r, token) { const p = r.players.get(token); if (!p) return; p.stream?.end(); r.players.delete(token); P.releasePlayer(r.state, p.id); delete r.inputs[p.id]; if (r.state.phase === 'lobby') r.state.participants = []; updateLobby(r); }
-function createState(n, duration, round = 1) { const s = P.create(n, duration); s.matchId = round; s.phase = 'lobby'; s.protocol = 3; s.version = VERSION; return s; }
+function createState(n, duration, round = 1) { const s = P.create(n, duration); s.matchId = round; s.phase = 'lobby'; s.protocol = 4; s.version = VERSION; return s; }
 const server = http.createServer(async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
-    if (u.pathname === '/health') return json(res, 200, { ok: true, version: VERSION, protocol: 3, rooms: rooms.size });
+    if (u.pathname === '/health') return json(res, 200, { ok: true, version: VERSION, protocol: 4, rooms: rooms.size });
     if (u.pathname === '/api/events') {
         const r = rooms.get(u.searchParams.get('room')), player = r?.players.get(u.searchParams.get('token'));
         if (!player) return json(res, 403, { error: 'Комната или игрок не найдены' });
@@ -24,7 +24,7 @@ const server = http.createServer(async (req, res) => {
             for await (const chunk of req) { body += chunk; if (body.length > 4096) { json(res, 413, { error: 'Слишком большой запрос' }); req.destroy(); return; } }
             const data = JSON.parse(body || '{}');
             if (u.pathname === '/api/create' || u.pathname === '/api/join') {
-                if (data.protocol !== 3) return json(res, 426, { error: 'Обновите страницу для загрузки новой версии комнаты ожидания.' });
+                if (data.protocol !== 4) return json(res, 426, { error: 'Обновите страницу для загрузки новой версии комнаты ожидания.' });
                 let code, r;
                 if (u.pathname === '/api/create') {
                     if (rooms.size >= 100) return json(res, 503, { error: 'Сервер заполнен' });

@@ -1,11 +1,11 @@
 'use strict';
-const $ = id => document.getElementById(id), P = Physics, VERSION = '2.3.0';
+const $ = id => document.getElementById(id), P = Physics, VERSION = '2.4.0';
 let renderer;
 try { renderer = new ArenaRenderer($('game')); } catch (e) { $('error').textContent = e.message; $('play').disabled = true; }
 let state = P.create(4,600), view = state, playing = false, paused = false, mode = 'solo', localId = 0, keys = {}, session = null, events = null, follow = true, muted = true, audio = null;
 let last = performance.now(), accum = 0, announceUntil = 0, lastGoalTick = -1, lastHud = 0, lastLabels = 0, lastNet = 0, lastInput = '', netBusy = false, inputSeq = 0, ping = 0, lastReceived = 0;
 let snapshots = [], predicted = null, viewCars = [], viewBall = {}, predictionAccum = 0, lastRender = 0;
-const labels = new Map(), timeline = new Netcode.SnapshotBuffer(), predictor = new Netcode.CarPrediction(P.drive);
+const labels = new Map(), timeline = new Netcode.SnapshotBuffer(), predictor = new Netcode.CarPrediction((car,dt,keys)=>P.predictDrive(car,dt,keys,view.cars,view.ball));
 let lastSceneRender = 0;
 $('buildVersion').textContent = 'v' + VERSION;
 const waiting = () => !!session && state.phase === 'lobby';
@@ -36,7 +36,7 @@ function syncWaitingRoom() {
         if (!members.length) { const row = document.createElement('li'); row.className = 'empty-seat'; row.textContent = 'ЖДЁМ ИГРОКОВ'; list.append(row); }
         for (const player of members) {
             const row = document.createElement('li'), name = document.createElement('span'), status = document.createElement('b');
-            name.textContent = player.name; const role = document.createElement('small'); role.textContent = (player.id === localId ? 'ТЫ' : '') + (player.id === lobby.hostId ? (player.id === localId ? ' · ' : '') + 'СОЗДАТЕЛЬ' : ''); name.append(role);
+            name.textContent = player.name; name.className='lobby-player-name'; name.dataset.initial=Array.from(player.name)[0]?.toUpperCase()||'·'; const role = document.createElement('small'); role.textContent = (player.id === localId ? 'ТЫ' : '') + (player.id === lobby.hostId ? (player.id === localId ? ' · ' : '') + 'СОЗДАТЕЛЬ' : ''); name.append(role);
             status.textContent = player.ready ? 'ГОТОВ' : 'СОБИРАЕТСЯ'; row.dataset.ready = player.ready; row.append(name, status); list.append(row);
         }
     }
@@ -135,7 +135,7 @@ $('play').onclick=async()=>{
         const n=+$('size').value,duration=+$('duration').value,team=+$('team').value;
         if(mode==='solo'){state=P.create(n,duration);state.matchId=1;localId=team*n;P.namePlayer(state,localId,name);}
         else {
-            const data=await api(mode==='host'?'create':'join',{n,duration,team,name,protocol:3,room:$('roomInput').value.trim()});if(data.state.phase!=='lobby')throw Error('Обновите страницу: сервер должен открыть комнату ожидания.');session={room:data.room,token:data.token,playerId:data.playerId};localId=data.id;playing=false;timeline.reset();receive(data.state);
+            const data=await api(mode==='host'?'create':'join',{n,duration,team,name,protocol:4,room:$('roomInput').value.trim()});if(data.state.phase!=='lobby')throw Error('Обновите страницу: сервер должен открыть комнату ожидания.');session={room:data.room,token:data.token,playerId:data.playerId};localId=data.id;playing=false;timeline.reset();receive(data.state);
             events=new EventSource(`/api/events?room=${session.room}&token=${session.token}`);
             events.onmessage=e=>{try{receive(JSON.parse(e.data));}catch(err){console.error('Snapshot error',err);}};
             events.onerror=()=>{$('connection').textContent='ВОССТАНАВЛИВАЕМ СВЯЗЬ';if(waiting())$('lobbyError').textContent='Связь прервалась. Переподключаемся…';};
