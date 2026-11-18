@@ -2,9 +2,9 @@
 const http = require('node:http'), fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 const { performance } = require('node:perf_hooks');
 const P = require('./dist/physics.js'), rooms = new Map(), root = path.join(__dirname, 'dist'), PORT = Number(process.env.PORT) || 8080;
-const VERSION = '2.2.0';
+const VERSION = '2.3.0';
 function json(res, status, data) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); }
-function updateLobby(r) { r.dirty = true; r.state.lobby = { hostId: r.players.values().next().value?.id ?? null, players: [...r.players.values()].map(p => ({ id: p.id, name: r.state.cars[p.id].name, team: r.state.cars[p.id].team, ready: p.ready })) }; }
+function updateLobby(r) { r.dirty = true; r.state.lobby = { hostId: r.players.values().next().value?.id ?? null, players: [...r.players.values()].map(p => ({ id: p.id, playerId: p.playerId, name: r.state.cars[p.id].name, team: r.state.cars[p.id].team, ready: p.ready })) }; }
 function removePlayer(r, token) { const p = r.players.get(token); if (!p) return; p.stream?.end(); r.players.delete(token); P.releasePlayer(r.state, p.id); delete r.inputs[p.id]; if (r.state.phase === 'lobby') r.state.participants = []; updateLobby(r); }
 function createState(n, duration, round = 1) { const s = P.create(n, duration); s.matchId = round; s.phase = 'lobby'; s.protocol = 3; s.version = VERSION; return s; }
 const server = http.createServer(async (req, res) => {
@@ -40,13 +40,29 @@ const server = http.createServer(async (req, res) => {
                 const car = r.state.cars.find(c => c.team === team && !occupied.has(c.id)) || r.state.cars.find(c => !occupied.has(c.id));
                 if (!car) return json(res, 409, { error: 'Комната заполнена' });
                 const token = crypto.randomBytes(20).toString('hex');
-                r.players.set(token, { id: car.id, seen: Date.now(), stream: null, ready: false });
+                const playerId = crypto.randomBytes(8).toString('hex');
+                r.players.set(token, { id: car.id, playerId, seen: Date.now(), stream: null, ready: false });
                 car.stats = P.emptyStats(); P.namePlayer(r.state, car.id, data.name); car.ack = 0; r.inputs[car.id] = {}; updateLobby(r);
-                return json(res, 200, { room: code, token, id: car.id, state: r.state });
+                return json(res, 200, { room: code, token, playerId, id: car.id, state: r.state });
             }
             const r = rooms.get(String(data.room || '').toUpperCase()), p = r?.players.get(data.token);
             if (!p) return json(res, 403, { error: 'Игрок не найден' });
             p.seen = Date.now();
+            if (u.pathname === '/api/team') {
+                if (r.state.phase !== 'lobby') return json(res, 409, { error: 'Команду можно менять только в комнате ожидания' });
+                if (data.team !== 0 && data.team !== 1) return json(res, 400, { error: 'Выберите синих или оранжевых' });
+                const old = r.state.cars[p.id];
+                if (old.team === data.team) return json(res, 200, { ok: true, id: p.id });
+                const occupied = new Set([...r.players.values()].map(q => q.id));
+                const seat = r.state.cars.find(c => c.team === data.team && !occupied.has(c.id));
+                if (!seat) return json(res, 409, { error: 'В выбранной команде нет свободных мест' });
+                const name = old.name, oldId = p.id;
+                P.releasePlayer(r.state, oldId); r.state.participants = [];
+                seat.stats = P.emptyStats(); P.namePlayer(r.state, seat.id, name); seat.ack = 0;
+                delete r.inputs[oldId]; r.inputs[seat.id] = {};
+                p.id = seat.id; p.ready = false; updateLobby(r);
+                return json(res, 200, { ok: true, id: p.id });
+            }
             if (u.pathname === '/api/ready') {
                 if (r.state.phase !== 'lobby') return json(res, 409, { error: 'Матч уже начался' });
                 p.ready = data.ready === true; updateLobby(r); return json(res, 200, { ok: true });

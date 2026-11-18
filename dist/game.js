@@ -1,5 +1,5 @@
 'use strict';
-const $ = id => document.getElementById(id), P = Physics, VERSION = '2.2.0';
+const $ = id => document.getElementById(id), P = Physics, VERSION = '2.3.0';
 let renderer;
 try { renderer = new ArenaRenderer($('game')); } catch (e) { $('error').textContent = e.message; $('play').disabled = true; }
 let state = P.create(4,600), view = state, playing = false, paused = false, mode = 'solo', localId = 0, keys = {}, session = null, events = null, follow = true, muted = true, audio = null;
@@ -30,6 +30,9 @@ function syncWaitingRoom() {
     for (const [team, id] of [[0, 'lobbyBlue'], [1, 'lobbyOrange']]) {
         const list = $(id); list.replaceChildren(); const members = players.filter(p => p.team === team);
         $(team ? 'lobbyOrangeCount' : 'lobbyBlueCount').textContent = `${members.length} / ${state.n}`;
+        const choice = $(team ? 'lobbyJoinOrange' : 'lobbyJoinBlue'), selected = mine?.team === team, full = members.length >= state.n;
+        choice.textContent = selected ? 'ТВОЯ КОМАНДА ✓' : full ? 'КОМАНДА ЗАПОЛНЕНА' : team ? 'ВЫБРАТЬ ОРАНЖЕВЫХ' : 'ВЫБРАТЬ СИНИХ';
+        choice.setAttribute('aria-pressed', String(selected)); choice.disabled = lobbyBusy || selected || full;
         if (!members.length) { const row = document.createElement('li'); row.className = 'empty-seat'; row.textContent = 'ЖДЁМ ИГРОКОВ'; list.append(row); }
         for (const player of members) {
             const row = document.createElement('li'), name = document.createElement('span'), status = document.createElement('b');
@@ -57,6 +60,8 @@ function receive(next) {
     if (session && !['lobby','playing','ended'].includes(next.phase)) throw Error('Обновите страницу: версия сервера изменилась.');
     const changed = state.matchId !== next.matchId || next.tick < state.tick, starting = state.phase === 'lobby' && next.phase === 'playing';
     const teleport = changed || starting || next.freeze > 0 || next.ended || next.phase === 'lobby';
+    const mySeat = session?.playerId && next.lobby?.players.find(p => p.playerId === session.playerId);
+    if (mySeat && mySeat.id !== localId) { localId = mySeat.id; timeline.reset(); predictor.car = null; predictionAccum = 0; }
     state = next; lastReceived = now;
     if (waiting() && $('lobbyError').textContent === 'Связь прервалась. Переподключаемся…') $('lobbyError').textContent = '';
     if(changed) { paused=false;$('overlay').hidden=true;$('results').hidden=true;lastGoalTick=-1;predictionAccum=0; }
@@ -130,7 +135,7 @@ $('play').onclick=async()=>{
         const n=+$('size').value,duration=+$('duration').value,team=+$('team').value;
         if(mode==='solo'){state=P.create(n,duration);state.matchId=1;localId=team*n;P.namePlayer(state,localId,name);}
         else {
-            const data=await api(mode==='host'?'create':'join',{n,duration,team,name,protocol:3,room:$('roomInput').value.trim()});if(data.state.phase!=='lobby')throw Error('Обновите страницу: сервер должен открыть комнату ожидания.');session={room:data.room,token:data.token};localId=data.id;playing=false;timeline.reset();receive(data.state);
+            const data=await api(mode==='host'?'create':'join',{n,duration,team,name,protocol:3,room:$('roomInput').value.trim()});if(data.state.phase!=='lobby')throw Error('Обновите страницу: сервер должен открыть комнату ожидания.');session={room:data.room,token:data.token,playerId:data.playerId};localId=data.id;playing=false;timeline.reset();receive(data.state);
             events=new EventSource(`/api/events?room=${session.room}&token=${session.token}`);
             events.onmessage=e=>{try{receive(JSON.parse(e.data));}catch(err){console.error('Snapshot error',err);}};
             events.onerror=()=>{$('connection').textContent='ВОССТАНАВЛИВАЕМ СВЯЗЬ';if(waiting())$('lobbyError').textContent='Связь прервалась. Переподключаемся…';};
@@ -176,6 +181,8 @@ async function lobbyAction(action, data = {}) {
 }
 $('lobbyReady').onclick=()=>lobbyAction('ready', { ready: !state.lobby?.players.find(p=>p.id===localId)?.ready });
 $('lobbyStart').onclick=()=>lobbyAction('start');
+$('lobbyJoinBlue').onclick=()=>lobbyAction('team', { team: 0 });
+$('lobbyJoinOrange').onclick=()=>lobbyAction('team', { team: 1 });
 $('lobbyCopy').onclick=()=> $('copy').onclick();
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText(session.room);$('copy').textContent='СКОПИРОВАНО';$('lobbyCopy').textContent='СКОПИРОВАНО';setTimeout(()=>{$('copy').textContent='КОПИРОВАТЬ';$('lobbyCopy').textContent='КОПИРОВАТЬ КОД';},1600);}catch{prompt('Код комнаты',session.room);}};
 $('sound').onclick=()=>{muted=!muted;$('sound').textContent=muted?'ЗВУК ВЫКЛ.':'ЗВУК ВКЛ.';if(!muted)beep();};

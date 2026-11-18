@@ -25,8 +25,9 @@ Everyone must open the same server address. `HOST=::` listens on IPv6 and, where
 1. Enter a nickname and select **С друзьями** (With friends).
 2. Choose the team size and match duration, then create a room.
 3. Share the six-character room code. Friends select **Войти по коду** (Join by code).
-4. Everyone clicks **Я готов** (Ready). The creator stays in the lobby until they explicitly click **Начать матч** (Start match).
-5. A shared three-second countdown starts the match. Bots fill unused seats.
+4. Choose or change your team in the lobby. A full team cannot be selected. Switching teams keeps your nickname and host role, but resets your own readiness.
+5. Everyone clicks **Я готов** (Ready). The creator stays in the lobby until they explicitly click **Начать матч** (Start match).
+6. A shared three-second countdown starts the match. Bots fill unused seats.
 
 The server freezes the clock and physics in the lobby. Readying up never starts a match automatically. If someone joins, that player must also confirm readiness. The host role passes to the next player when the creator leaves. After a match, the host can return everyone to the same lobby; names and the room code remain, while readiness and statistics reset.
 

@@ -34,6 +34,6 @@ const command=(action,p,data={})=>request('/api/'+action,{room:p.room,token:p.to
     await command('leave',host);advance(100);const promoted=snapshot(replacement);assert.equal(promoted.lobby.hostId,players[1].id);assert.equal(promoted.lobby.players.length,9);
     assert.equal((await command('start',host)).status,403);assert.equal((await command('start',players[1])).status,409);
     for(const p of players.slice(1))await command('ready',p,{ready:true});assert.equal((await command('start',players[1])).status,200);
-    assert.equal(JSON.parse((await request('/health')).body).version,'2.2.0');
+    assert.equal(JSON.parse((await request('/health')).body).version,'2.3.0');
     console.log('Server: lobby freezes time and input, readiness toggles, host-only manual start, late joins rejected, 10 players, SSE, stats, results→lobby, readiness reset, host transfer and restart OK.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
